@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>행사 퀴즈</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+:root{
+  --bg:#F5F7FA; --card:#FFFFFF; --ink:#1B2430; --muted:#6B7684;
+  --line:#D8DEE6; --accent:#0E7C7B; --accent-soft:#E3F2F1;
+  --right:#1E8E5A; --wrong:#C8402F;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);-webkit-text-size-adjust:100%;
+  font-family:"Pretendard Variable",Pretendard,-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif}
+.app{max-width:520px;margin:0 auto;min-height:100dvh;display:flex;flex-direction:column;
+  padding:20px 20px calc(24px + env(safe-area-inset-bottom))}
+.screen{display:none;flex:1;flex-direction:column}
+.screen.active{display:flex}
+h1{font-size:28px;line-height:1.25;font-weight:700;margin:24px 0 8px;letter-spacing:-.02em}
+p{margin:0 0 12px;line-height:1.6}
+.muted{color:var(--muted);font-size:14px}
+
+/* 참가 정보 */
+label.field{display:block;margin:16px 0 0;font-size:14px;color:var(--muted)}
+input[type=text],input[type=tel]{width:100%;margin-top:6px;padding:14px;font:inherit;font-size:17px;
+  border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink)}
+input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
+.consent{margin-top:18px;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--card);font-size:14px}
+.consent label{display:flex;gap:10px;align-items:flex-start;cursor:pointer}
+.consent input{width:20px;height:20px;margin:1px 0 0;accent-color:var(--accent);flex:none}
+.consent details{margin-top:10px;color:var(--muted)}
+.consent summary{cursor:pointer}
+.consent ul{margin:8px 0 0;padding-left:18px;line-height:1.6}
+.btn{width:100%;padding:16px;margin-top:20px;border:0;border-radius:12px;background:var(--accent);color:#fff;
+  font:inherit;font-size:17px;font-weight:600;cursor:pointer}
+.btn:disabled{opacity:.45;cursor:default}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn:focus-visible,.opt:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
+.error{color:var(--wrong);font-size:14px;margin-top:10px;min-height:1.2em}
+
+/* 퀴즈 */
+.rail{display:flex;gap:4px;margin-top:4px}
+.rail i{flex:1;height:5px;border-radius:3px;background:var(--line)}
+.rail i.done{background:var(--accent)}
+.rail i.cur{background:var(--accent);opacity:.4}
+.qnum{margin:28px 0 6px;font-size:14px;color:var(--muted)}
+.qnum b{font-size:40px;font-weight:300;color:var(--ink);letter-spacing:-.03em;line-height:1;margin-right:6px}
+.qtext{font-size:22px;line-height:1.4;font-weight:600;margin:0 0 22px;letter-spacing:-.01em;word-break:keep-all}
+.opts{display:flex;flex-direction:column;gap:10px}
+.opt{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:15px 16px;
+  border:1.5px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);
+  font:inherit;font-size:17px;line-height:1.4;cursor:pointer;word-break:keep-all}
+.opt::before{content:"";flex:none;width:20px;height:20px;border-radius:50%;border:2px solid var(--line)}
+.opt[aria-checked=true]{border-color:var(--accent);background:var(--accent-soft)}
+.opt[aria-checked=true]::before{border:6px solid var(--accent)}
+.nav{display:flex;gap:10px;margin-top:auto;padding-top:24px}
+.nav .btn{margin-top:0}
+.nav .ghost{flex:0 0 96px}
+@media (prefers-reduced-motion:no-preference){.opt{transition:background .12s,border-color .12s}}
+
+/* 결과 */
+.score{margin:32px 0 8px;font-size:14px;color:var(--muted)}
+.score b{display:block;font-size:64px;font-weight:300;letter-spacing:-.04em;color:var(--ink);line-height:1;margin-top:4px}
+.score b small{font-size:24px;color:var(--muted);font-weight:400;margin-left:4px}
+.review{list-style:none;padding:0;margin:20px 0 0;border-top:1px solid var(--line)}
+.review li{padding:14px 0;border-bottom:1px solid var(--line);font-size:15px;line-height:1.5;word-break:keep-all}
+.review .mark{font-weight:700;margin-right:6px}
+.review .ok .mark{color:var(--right)}
+.review .no .mark{color:var(--wrong)}
+.review .ans{color:var(--muted);font-size:14px;margin-top:4px}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <section id="s-intro" class="screen active" aria-label="참가 정보 입력">
+    <h1 id="title">행사 퀴즈</h1>
+    <p class="muted">10문제가 무작위로 출제됩니다. 휴대전화번호당 한 번만 참여할 수 있습니다.</p>
+
+    <label class="field">이름
+      <input id="name" type="text" autocomplete="name" maxlength="30" placeholder="홍길동">
+    </label>
+    <label class="field">휴대전화
+      <input id="phone" type="tel" inputmode="numeric" autocomplete="tel" maxlength="13" placeholder="010-1234-5678">
+    </label>
+
+    <div class="consent">
+      <label><input id="agree" type="checkbox"><span>개인정보 수집·이용에 동의합니다.</span></label>
+      <details>
+        <summary>수집 내용 보기</summary>
+        <ul>
+          <li>수집 항목: 이름, 휴대전화번호</li>
+          <li>수집 목적: 퀴즈 참여 확인 및 경품 지급</li>
+          <li>보유 기간: 행사 종료 후 30일 이내 파기 [확인 필요]</li>
+          <li>동의를 거부할 수 있으며, 거부 시 퀴즈에 참여할 수 없습니다.</li>
+        </ul>
+      </details>
+    </div>
+
+    <div id="intro-error" class="error" role="alert"></div>
+    <button id="btn-start" class="btn" type="button">퀴즈 시작</button>
+  </section>
+
+  <section id="s-quiz" class="screen" aria-label="퀴즈">
+    <div class="rail" id="rail" aria-hidden="true"></div>
+    <div class="qnum"><b id="qnum">1</b>/ <span id="qtotal">10</span></div>
+    <h2 class="qtext" id="qtext"></h2>
+    <div class="opts" id="opts" role="radiogroup" aria-label="보기"></div>
+    <div id="quiz-error" class="error" role="alert"></div>
+    <div class="nav">
+      <button id="btn-prev" class="btn ghost" type="button">이전</button>
+      <button id="btn-next" class="btn" type="button" disabled>다음</button>
+    </div>
+  </section>
+
+  <section id="s-result" class="screen" aria-label="결과">
+    <h1>참여 완료</h1>
+    <div class="score">맞힌 문제<b><span id="score">0</span><small>/ <span id="total">10</span></small></b></div>
+    <p class="muted">응답이 저장되었습니다. 경품 안내는 행사 진행 안내를 확인해 주세요.</p>
+    <ul class="review" id="review"></ul>
+  </section>
+
+</div>
+
+<script>
+/* ===== 설정: 배포한 Apps Script 웹앱 URL로 교체 ===== */
+const API_URL = 'https://script.google.com/macros/s/XXXXXXXXXXXXXXXX/exec';
+const EVENT_TITLE = '행사 퀴즈';
+/* ================================================== */
+
+const $ = (id) => document.getElementById(id);
+const state = { name: '', phone: '', questions: [], answers: [], idx: 0, busy: false };
+
+document.title = EVENT_TITLE;
+$('title').textContent = EVENT_TITLE;
+
+function show(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === id));
+  window.scrollTo(0, 0);
+}
+function setBusy(btn, busy, label) { btn.disabled = busy; btn.textContent = label; }
+function digits(v) { return String(v || '').replace(/\D/g, ''); }
+function isValidPhone(d) { return /^01[016789]\d{7,8}$/.test(d); }
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+/* 전화번호 입력 시 하이픈 자동 삽입 */
+$('phone').addEventListener('input', (e) => {
+  const d = digits(e.target.value).slice(0, 11);
+  e.target.value = d.length > 7 ? `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`
+                 : d.length > 3 ? `${d.slice(0, 3)}-${d.slice(3)}`
+                 : d;
+});
+
+/* 1) 참가 정보 확인 → 문제 받기 */
+$('btn-start').addEventListener('click', async () => {
+  const name = $('name').value.trim();
+  const phone = digits($('phone').value);
+  const err = $('intro-error');
+  err.textContent = '';
+  if (!name) { err.textContent = '이름을 입력해 주세요.'; return; }
+  if (!isValidPhone(phone)) { err.textContent = '휴대전화번호 형식이 올바르지 않습니다.'; return; }
+  if (!$('agree').checked) { err.textContent = '개인정보 수집·이용에 동의해야 참여할 수 있습니다.'; return; }
+
+  state.name = name;
+  state.phone = phone;
+  setBusy($('btn-start'), true, '문제를 불러오는 중…');
+  try {
+    const res = await fetch(`${API_URL}?action=questions&t=${Date.now()}`);
+    const data = await res.json();
+    if (!data.ok || !Array.isArray(data.questions) || data.questions.length === 0) {
+      throw new Error(data.error || 'no questions');
+    }
+    state.questions = data.questions;
+    state.answers = new Array(data.questions.length).fill(null);
+    state.idx = 0;
+    $('qtotal').textContent = data.questions.length;
+    $('rail').innerHTML = data.questions.map(() => '<i></i>').join('');
+    render();
+    show('s-quiz');
+  } catch (e) {
+    err.textContent = '문제를 불러오지 못했습니다. 네트워크를 확인하고 다시 시도해 주세요.';
+  } finally {
+    setBusy($('btn-start'), false, '퀴즈 시작');
+  }
+});
+
+/* 2) 문제 화면 */
+function render() {
+  const q = state.questions[state.idx];
+  const chosen = state.answers[state.idx];
+  $('qnum').textContent = state.idx + 1;
+  $('qtext').textContent = q.question;
+
+  const opts = $('opts');
+  opts.innerHTML = '';
+  q.options.forEach((text) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'opt';
+    b.setAttribute('role', 'radio');
+    b.setAttribute('aria-checked', chosen === text ? 'true' : 'false');
+    b.textContent = text;
+    b.addEventListener('click', () => { state.answers[state.idx] = text; render(); });
+    opts.appendChild(b);
+  });
+
+  Array.from($('rail').children).forEach((el, i) => {
+    el.className = state.answers[i] !== null ? 'done' : (i === state.idx ? 'cur' : '');
+  });
+
+  const last = state.idx === state.questions.length - 1;
+  $('btn-prev').style.visibility = state.idx === 0 ? 'hidden' : 'visible';
+  $('btn-next').textContent = last ? '제출하기' : '다음';
+  $('btn-next').disabled = chosen === null;
+  $('quiz-error').textContent = '';
+}
+
+$('btn-prev').addEventListener('click', () => { if (state.idx > 0) { state.idx--; render(); } });
+$('btn-next').addEventListener('click', () => {
+  if (state.answers[state.idx] === null) return;
+  if (state.idx < state.questions.length - 1) { state.idx++; render(); return; }
+  submit();
+});
+
+/* 3) 제출 → 서버 채점 결과 표시 */
+async function submit() {
+  if (state.busy) return;
+  const missing = state.answers.findIndex(a => a === null);
+  if (missing !== -1) {
+    state.idx = missing; render();
+    $('quiz-error').textContent = '아직 답하지 않은 문제가 있습니다.';
+    return;
+  }
+  state.busy = true;
+  setBusy($('btn-next'), true, '제출 중…');
+
+  const payload = {
+    name: state.name,
+    phone: state.phone,
+    answers: state.questions.map((q, i) => ({ id: q.id, choice: state.answers[i] })),
+    ua: navigator.userAgent,
+  };
+  try {
+    // Content-Type을 지정하지 않으면 text/plain으로 전송되어 CORS preflight가 발생하지 않음 (Apps Script는 OPTIONS 미지원)
+    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (!data.ok) {
+      $('quiz-error').textContent = data.error === 'duplicate'
+        ? '이미 참여한 휴대전화번호입니다.'
+        : '제출에 실패했습니다. 다시 시도해 주세요.';
+      return;
+    }
+    showResult(data);
+  } catch (e) {
+    $('quiz-error').textContent = '제출에 실패했습니다. 네트워크를 확인하고 다시 시도해 주세요.';
+  } finally {
+    state.busy = false;
+    setBusy($('btn-next'), false, '제출하기');
+  }
+}
+
+function showResult(data) {
+  $('score').textContent = data.score;
+  $('total').textContent = data.total;
+  const byId = {};
+  (data.results || []).forEach(r => { byId[String(r.id)] = r; });
+  $('review').innerHTML = state.questions.map((q, i) => {
+    const r = byId[String(q.id)] || {};
+    const ok = !!r.correct;
+    const detail = ok ? '' : `<div class="ans">정답: ${esc(r.answer || '')}<br>내 답: ${esc(state.answers[i])}</div>`;
+    return `<li class="${ok ? 'ok' : 'no'}"><span class="mark">${ok ? '○' : '✕'}</span>${esc(q.question)}${detail}</li>`;
+  }).join('');
+  show('s-result');
+}
+</script>
+</body>
+</html>
