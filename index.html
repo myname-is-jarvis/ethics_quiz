@@ -21,9 +21,11 @@ html,body{margin:0;background:var(--bg);color:var(--ink);-webkit-text-size-adjus
 h1{font-size:28px;line-height:1.25;font-weight:700;margin:24px 0 8px;letter-spacing:-.02em}
 p{margin:0 0 12px;line-height:1.6}
 .muted{color:var(--muted);font-size:14px}
+[hidden]{display:none !important}
 
 /* 참가 정보 */
 label.field{display:block;margin:16px 0 0;font-size:14px;color:var(--muted)}
+label.field .hint{display:block;margin-top:4px;font-size:12px;color:var(--muted)}
 input[type=text],input[type=tel]{width:100%;margin-top:6px;padding:14px;font:inherit;font-size:17px;
   border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink)}
 input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
@@ -64,6 +66,13 @@ input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:tran
 .score{margin:32px 0 8px;font-size:14px;color:var(--muted)}
 .score b{display:block;font-size:64px;font-weight:300;letter-spacing:-.04em;color:var(--ink);line-height:1;margin-top:4px}
 .score b small{font-size:24px;color:var(--muted);font-weight:400;margin-left:4px}
+.who{font-size:14px;color:var(--muted);margin:0 0 4px}
+.prize{margin:16px 0 4px;padding:16px;border:1.5px solid var(--accent);border-radius:14px;background:var(--accent-soft)}
+.prize-head{font-size:18px;font-weight:700;color:var(--accent)}
+.prize-body{margin-top:6px;font-size:15px;line-height:1.5;word-break:keep-all}
+.prize .btn{margin-top:14px}
+.claimed{margin-top:14px;padding:12px 14px;border-radius:10px;background:var(--ink);color:#fff;font-size:15px;font-weight:600;line-height:1.5}
+.claimed small{display:block;font-weight:400;opacity:.8;font-size:13px;margin-top:2px}
 .review{list-style:none;padding:0;margin:20px 0 0;border-top:1px solid var(--line)}
 .review li{padding:14px 0;border-bottom:1px solid var(--line);font-size:15px;line-height:1.5;word-break:keep-all}
 .review .mark{font-weight:700;margin-right:6px}
@@ -77,10 +86,14 @@ input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:tran
 
   <section id="s-intro" class="screen active" aria-label="참가 정보 입력">
     <h1 id="title">행사 퀴즈</h1>
-    <p class="muted">10문제가 무작위로 출제됩니다. 휴대전화번호당 한 번만 참여할 수 있습니다.</p>
+    <p class="muted" id="intro-note"></p>
 
     <label class="field">이름
       <input id="name" type="text" autocomplete="name" maxlength="30" placeholder="홍길동">
+    </label>
+    <label class="field">개인번호
+      <input id="emp" type="text" inputmode="numeric" autocomplete="off" maxlength="20" placeholder="0000">
+      <span class="hint">직원이 아닌 경우 0000을 입력해 주세요.</span>
     </label>
     <label class="field">휴대전화
       <input id="phone" type="tel" inputmode="numeric" autocomplete="tel" maxlength="13" placeholder="010-1234-5678">
@@ -91,8 +104,8 @@ input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:tran
       <details>
         <summary>수집 내용 보기</summary>
         <ul>
-          <li>수집 항목: 이름, 휴대전화번호</li>
-          <li>수집 목적: 퀴즈 참여 확인 및 경품 지급</li>
+          <li>수집 항목: 이름, 개인번호, 휴대전화번호</li>
+          <li>수집 목적: 퀴즈 참여 확인 및 상품 지급</li>
           <li>보유 기간: 행사 종료 후 30일 이내 파기 [확인 필요]</li>
           <li>동의를 거부할 수 있으며, 거부 시 퀴즈에 참여할 수 없습니다.</li>
         </ul>
@@ -101,11 +114,12 @@ input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:tran
 
     <div id="intro-error" class="error" role="alert"></div>
     <button id="btn-start" class="btn" type="button">퀴즈 시작</button>
+    <button id="btn-status" class="btn ghost" type="button" hidden>내 결과 보기</button>
   </section>
 
   <section id="s-quiz" class="screen" aria-label="퀴즈">
     <div class="rail" id="rail" aria-hidden="true"></div>
-    <div class="qnum"><b id="qnum">1</b>/ <span id="qtotal">10</span></div>
+    <div class="qnum"><b id="qnum">1</b>/ <span id="qtotal">2</span></div>
     <h2 class="qtext" id="qtext"></h2>
     <div class="opts" id="opts" role="radiogroup" aria-label="보기"></div>
     <div id="quiz-error" class="error" role="alert"></div>
@@ -116,9 +130,19 @@ input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:tran
   </section>
 
   <section id="s-result" class="screen" aria-label="결과">
-    <h1>참여 완료</h1>
-    <div class="score">맞힌 문제<b><span id="score">0</span><small>/ <span id="total">10</span></small></b></div>
-    <p class="muted">응답이 저장되었습니다. 경품 안내는 행사 진행 안내를 확인해 주세요.</p>
+    <h1 id="result-title">참여 완료</h1>
+    <p class="who" id="who"></p>
+    <div class="score">맞힌 문제<b><span id="score">0</span><small>/ <span id="total">2</span></small></b></div>
+
+    <div id="prize" class="prize" hidden>
+      <div class="prize-head">축하합니다!</div>
+      <div class="prize-body" id="prize-text"></div>
+      <button id="btn-claim" class="btn" type="button">운영자 확인</button>
+      <div id="claimed-box" class="claimed" hidden></div>
+      <div id="claim-error" class="error" role="alert"></div>
+    </div>
+
+    <p class="muted" id="result-note"></p>
     <ul class="review" id="review"></ul>
   </section>
 
@@ -128,13 +152,20 @@ input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:tran
 /* ===== 설정: 배포한 Apps Script 웹앱 URL로 교체 ===== */
 const API_URL = 'https://script.google.com/macros/s/AKfycbzAn8LSai07sHfEZKwohFyntErNrJjObshGHxxi2Y9cztOdf3flolUvL-o0se8XOovYDA/exec';
 const EVENT_TITLE = '행사 퀴즈';
+const QUESTIONS_PER_QUIZ = 2; // Code.gs의 CONFIG.QUESTIONS_PER_QUIZ와 같아야 함 (안내 문구 표시용)
+const PRIZE_MIN_SCORE = 2;    // Code.gs의 CONFIG.PRIZE_MIN_SCORE와 같아야 함
+const PRIZE_TEXT = '상품 부스에서 운영자에게 이 화면을 보여 주세요. 운영자가 아래 버튼을 눌러 지급을 확인합니다.';
+const NO_PRIZE_TEXT = `${QUESTIONS_PER_QUIZ}문제를 모두 맞히면 상품이 지급됩니다. 참여해 주셔서 감사합니다.`;
+// 혼잡(busy)·일시 오류 시 재시도: 대기 1.5s, 3s, 6s, 12s, 24s (각각 ±50% 지터)
+const RETRY = { attempts: 5, baseMs: 1500 };
 /* ================================================== */
 
 const $ = (id) => document.getElementById(id);
-const state = { name: '', phone: '', questions: [], answers: [], idx: 0, busy: false };
+const state = { name: '', emp: '', phone: '', token: '', questions: [], answers: [], idx: 0, busy: false };
 
 document.title = EVENT_TITLE;
 $('title').textContent = EVENT_TITLE;
+$('intro-note').textContent = `${QUESTIONS_PER_QUIZ}문제가 무작위로 출제됩니다. 휴대전화번호당 한 번만 참여할 수 있습니다.`;
 
 function show(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === id));
@@ -143,9 +174,43 @@ function show(id) {
 function setBusy(btn, busy, label) { btn.disabled = busy; btn.textContent = label; }
 function digits(v) { return String(v || '').replace(/\D/g, ''); }
 function isValidPhone(d) { return /^01[016789]\d{7,8}$/.test(d); }
+function isValidEmp(s) { return /^[0-9A-Za-z-]{1,20}$/.test(s); }
+function maskPhone(d) { return d.length >= 8 ? `${d.slice(0, 3)}-****-${d.slice(-4)}` : d; }
+function fmtTime(iso) {
+  const d = iso ? new Date(iso) : new Date();
+  return isNaN(d) ? String(iso) : d.toLocaleString('ko-KR', { hour12: false });
+}
 function esc(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+function newToken() {
+  try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID(); } catch (e) { /* 구형 브라우저 */ }
+  return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12);
+}
+
+/* 서버가 'busy'를 주거나(잠금 대기 초과), 응답이 JSON이 아니거나(할당량 초과 시 HTML 페이지),
+   네트워크 오류가 나면 지수 백오프 + 지터로 재시도. 그 외 ok:false는 그대로 반환 */
+async function requestJson(url, options, onRetry) {
+  let lastErr;
+  for (let i = 0; i <= RETRY.attempts; i++) {
+    try {
+      const res = await fetch(url, options);
+      const data = await res.json();
+      if (data && data.error === 'busy') throw new Error('busy');
+      return data;
+    } catch (e) {
+      lastErr = e;
+      if (i === RETRY.attempts) break;
+      const wait = RETRY.baseMs * Math.pow(2, i) * (0.5 + Math.random());
+      if (onRetry) onRetry(i + 1, Math.max(1, Math.round(wait / 1000)));
+      await sleep(wait);
+    }
+  }
+  throw lastErr;
+}
+// POST: Content-Type을 지정하지 않으면 text/plain으로 전송되어 CORS preflight가 발생하지 않음 (Apps Script는 OPTIONS 미지원)
+const postJson = (payload, onRetry) => requestJson(API_URL, { method: 'POST', body: JSON.stringify(payload) }, onRetry);
 
 /* 전화번호 입력 시 하이픈 자동 삽입 */
 $('phone').addEventListener('input', (e) => {
@@ -155,22 +220,41 @@ $('phone').addEventListener('input', (e) => {
                  : d;
 });
 
-/* 1) 참가 정보 확인 → 문제 받기 */
-$('btn-start').addEventListener('click', async () => {
-  const name = $('name').value.trim();
-  const phone = digits($('phone').value);
+/* 입력값 검증 (시작·결과 조회 공통) */
+function readIntro(needConsent) {
   const err = $('intro-error');
   err.textContent = '';
-  if (!name) { err.textContent = '이름을 입력해 주세요.'; return; }
-  if (!isValidPhone(phone)) { err.textContent = '휴대전화번호 형식이 올바르지 않습니다.'; return; }
-  if (!$('agree').checked) { err.textContent = '개인정보 수집·이용에 동의해야 참여할 수 있습니다.'; return; }
+  $('btn-status').hidden = true;
+  const name = $('name').value.trim();
+  const emp = $('emp').value.trim();
+  const phone = digits($('phone').value);
+  if (!name) { err.textContent = '이름을 입력해 주세요.'; return null; }
+  if (!isValidEmp(emp)) { err.textContent = '개인번호를 입력해 주세요. 직원이 아닌 경우 0000입니다.'; return null; }
+  if (!isValidPhone(phone)) { err.textContent = '휴대전화번호 형식이 올바르지 않습니다.'; return null; }
+  if (needConsent && !$('agree').checked) { err.textContent = '개인정보 수집·이용에 동의해야 참여할 수 있습니다.'; return null; }
+  state.name = name; state.emp = emp; state.phone = phone;
+  return { name, emp, phone };
+}
 
-  state.name = name;
-  state.phone = phone;
-  setBusy($('btn-start'), true, '문제를 불러오는 중…');
+/* 1) 참가 정보 확인 → 문제 받기 */
+$('btn-start').addEventListener('click', async () => {
+  if (state.busy) return;
+  const info = readIntro(true);
+  if (!info) return;
+  const err = $('intro-error');
+  state.token = newToken(); // 이번 참여 시도의 식별자 (제출 재시도 시 중복 저장 방지)
+  state.busy = true;
+  const btn = $('btn-start');
+  setBusy(btn, true, '문제를 불러오는 중…');
   try {
-    const res = await fetch(`${API_URL}?action=questions&t=${Date.now()}`);
-    const data = await res.json();
+    const url = `${API_URL}?action=questions&phone=${encodeURIComponent(info.phone)}&t=${Date.now()}`;
+    const data = await requestJson(url, undefined,
+      (n, s) => setBusy(btn, true, `접속이 많아 ${s}초 후 다시 시도합니다 (${n}/${RETRY.attempts})`));
+    if (data.error === 'duplicate') {
+      err.textContent = '이미 참여한 휴대전화번호입니다. 결과와 상품 지급 여부는 아래 버튼으로 확인할 수 있습니다.';
+      $('btn-status').hidden = false;
+      return;
+    }
     if (!data.ok || !Array.isArray(data.questions) || data.questions.length === 0) {
       throw new Error(data.error || 'no questions');
     }
@@ -182,9 +266,41 @@ $('btn-start').addEventListener('click', async () => {
     render();
     show('s-quiz');
   } catch (e) {
-    err.textContent = '문제를 불러오지 못했습니다. 네트워크를 확인하고 다시 시도해 주세요.';
+    console.error(e);
+    err.textContent = '문제를 불러오지 못했습니다. (' + ((e && e.message) || '알 수 없는 오류') + ')';
   } finally {
-    setBusy($('btn-start'), false, '퀴즈 시작');
+    state.busy = false;
+    setBusy(btn, false, '퀴즈 시작');
+  }
+});
+
+/* 1-b) 이미 참여한 사람: 저장된 결과 조회 (이름·번호가 저장값과 일치해야 함) */
+$('btn-status').addEventListener('click', async () => {
+  if (state.busy) return;
+  const info = readIntro(false);
+  if (!info) return;
+  const err = $('intro-error');
+  state.busy = true;
+  const btn = $('btn-status');
+  btn.hidden = false;
+  setBusy(btn, true, '결과를 불러오는 중…');
+  try {
+    const url = `${API_URL}?action=status&phone=${encodeURIComponent(info.phone)}&name=${encodeURIComponent(info.name)}&t=${Date.now()}`;
+    const data = await requestJson(url, undefined,
+      (n, s) => setBusy(btn, true, `접속이 많아 ${s}초 후 다시 시도합니다 (${n}/${RETRY.attempts})`));
+    if (!data.ok) {
+      err.textContent = data.error === 'name_mismatch' ? '저장된 이름과 다릅니다. 참여할 때 입력한 이름을 정확히 입력해 주세요.'
+                      : data.error === 'not_found' ? '이 번호로 저장된 결과가 없습니다.'
+                      : '결과를 불러오지 못했습니다. (' + (data.error || '알 수 없는 오류') + ')';
+      return;
+    }
+    showResult(data);
+  } catch (e) {
+    console.error(e);
+    err.textContent = '결과를 불러오지 못했습니다. (' + ((e && e.message) || '알 수 없는 오류') + ')';
+  } finally {
+    state.busy = false;
+    setBusy(btn, false, '내 결과 보기');
   }
 });
 
@@ -219,8 +335,9 @@ function render() {
   $('quiz-error').textContent = '';
 }
 
-$('btn-prev').addEventListener('click', () => { if (state.idx > 0) { state.idx--; render(); } });
+$('btn-prev').addEventListener('click', () => { if (state.busy) return; if (state.idx > 0) { state.idx--; render(); } });
 $('btn-next').addEventListener('click', () => {
+  if (state.busy) return;
   if (state.answers[state.idx] === null) return;
   if (state.idx < state.questions.length - 1) { state.idx++; render(); return; }
   submit();
@@ -236,46 +353,107 @@ async function submit() {
     return;
   }
   state.busy = true;
-  setBusy($('btn-next'), true, '제출 중…');
+  const btn = $('btn-next');
+  setBusy(btn, true, '제출 중…');
+  $('btn-prev').disabled = true;
 
   const payload = {
     name: state.name,
+    emp_id: state.emp,
     phone: state.phone,
+    token: state.token,
     answers: state.questions.map((q, i) => ({ id: q.id, choice: state.answers[i] })),
     ua: navigator.userAgent,
   };
   try {
-    // Content-Type을 지정하지 않으면 text/plain으로 전송되어 CORS preflight가 발생하지 않음 (Apps Script는 OPTIONS 미지원)
-    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) });
-    const data = await res.json();
+    const data = await postJson(payload,
+      (n, s) => setBusy(btn, true, `접속이 많아 ${s}초 후 다시 제출합니다 (${n}/${RETRY.attempts})`));
     if (!data.ok) {
       $('quiz-error').textContent = data.error === 'duplicate'
         ? '이미 참여한 휴대전화번호입니다.'
-        : '제출에 실패했습니다. 다시 시도해 주세요.';
+        : '제출에 실패했습니다. (' + (data.error || '알 수 없는 오류') + ')';
       return;
     }
     showResult(data);
   } catch (e) {
-    $('quiz-error').textContent = '제출에 실패했습니다. 네트워크를 확인하고 다시 시도해 주세요.';
+    console.error(e);
+    $('quiz-error').textContent = '제출에 실패했습니다. 잠시 후 "제출하기"를 다시 눌러 주세요. (' + ((e && e.message) || '알 수 없는 오류') + ')';
   } finally {
     state.busy = false;
-    setBusy($('btn-next'), false, '제출하기');
+    $('btn-prev').disabled = false;
+    setBusy(btn, false, '제출하기');
   }
 }
 
+/* 4) 결과 화면 (제출 직후·결과 조회 공통) */
 function showResult(data) {
+  const won = !!data.eligible || Number(data.score) >= PRIZE_MIN_SCORE;
   $('score').textContent = data.score;
   $('total').textContent = data.total;
-  const byId = {};
-  (data.results || []).forEach(r => { byId[String(r.id)] = r; });
-  $('review').innerHTML = state.questions.map((q, i) => {
-    const r = byId[String(q.id)] || {};
+  $('result-title').textContent = won ? '축하합니다!' : '참여 완료';
+  $('who').textContent = `${data.name || state.name} · 개인번호 ${data.emp_id || state.emp} · ${maskPhone(state.phone)}`;
+  $('prize').hidden = !won;
+  $('claim-error').textContent = '';
+  if (won) {
+    $('prize-text').textContent = PRIZE_TEXT;
+    renderClaim(!!data.claimed, data.claimed_at);
+  }
+  $('result-note').textContent = won ? '' : NO_PRIZE_TEXT;
+  $('review').innerHTML = (data.results || []).map(r => {
     const ok = !!r.correct;
-    const detail = ok ? '' : `<div class="ans">정답: ${esc(r.answer || '')}<br>내 답: ${esc(state.answers[i])}</div>`;
-    return `<li class="${ok ? 'ok' : 'no'}"><span class="mark">${ok ? '○' : '✕'}</span>${esc(q.question)}${detail}</li>`;
+    const detail = ok ? '' : `<div class="ans">정답: ${esc(r.answer || '')}<br>내 답: ${esc(r.choice || '')}</div>`;
+    return `<li class="${ok ? 'ok' : 'no'}"><span class="mark">${ok ? '○' : '?'}</span>${esc(r.question || r.id)}${detail}</li>`;
   }).join('');
   show('s-result');
 }
+
+function renderClaim(claimed, claimedAt) {
+  $('btn-claim').hidden = claimed;
+  const box = $('claimed-box');
+  box.hidden = !claimed;
+  if (claimed) box.innerHTML = `지급 완료<small>${esc(fmtTime(claimedAt))}</small>`;
+}
+
+/* 5) 운영자 확인: 서버에 지급 기록. 한 번 기록되면 다시 지급되지 않음 */
+$('btn-claim').addEventListener('click', async () => {
+  if (state.busy) return;
+  const err = $('claim-error');
+  err.textContent = '';
+  if (!window.confirm('운영자 확인입니다. 상품을 지급하셨습니까?')) return;
+  state.busy = true;
+  const btn = $('btn-claim');
+  setBusy(btn, true, '확인 중…');
+  try {
+    let pin = '';
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const data = await postJson({ action: 'claim', phone: state.phone, name: state.name, pin },
+        (n, s) => setBusy(btn, true, `접속이 많아 ${s}초 후 다시 시도합니다 (${n}/${RETRY.attempts})`));
+      if (data.ok) { renderClaim(true, data.claimed_at); return; }
+      if (data.error === 'already_claimed') {
+        renderClaim(true, data.claimed_at);
+        err.textContent = '이미 지급된 건입니다.';
+        return;
+      }
+      if (data.error === 'pin_required' || data.error === 'bad_pin') {
+        const input = window.prompt(data.error === 'bad_pin' ? 'PIN이 틀렸습니다. 운영자 PIN을 입력하세요.' : '운영자 PIN을 입력하세요.');
+        if (input === null) return; // 취소
+        pin = input.trim();
+        continue;
+      }
+      err.textContent = data.error === 'not_eligible' ? '상품 대상이 아닙니다.'
+                      : data.error === 'name_mismatch' ? '저장된 이름과 다릅니다.'
+                      : '확인에 실패했습니다. (' + (data.error || '알 수 없는 오류') + ')';
+      return;
+    }
+    err.textContent = 'PIN 입력 횟수를 초과했습니다.';
+  } catch (e) {
+    console.error(e);
+    err.textContent = '확인에 실패했습니다. (' + ((e && e.message) || '알 수 없는 오류') + ')';
+  } finally {
+    state.busy = false;
+    setBusy(btn, false, '운영자 확인');
+  }
+});
 </script>
 </body>
 </html>
