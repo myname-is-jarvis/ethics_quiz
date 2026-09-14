@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>행사 퀴즈</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<link rel="preconnect" href="https://script.google.com">
+<link rel="preconnect" href="https://script.googleusercontent.com">
 <style>
 :root{
   --bg:#F5F7FA; --card:#FFFFFF; --ink:#1B2430; --muted:#6B7684;
@@ -13,7 +14,7 @@
 }
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--ink);-webkit-text-size-adjust:100%;
-  font-family:"Pretendard Variable",Pretendard,-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif}
+  font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",Roboto,sans-serif}
 .app{max-width:520px;margin:0 auto;min-height:100dvh;display:flex;flex-direction:column;
   padding:20px 20px calc(24px + env(safe-area-inset-bottom))}
 .screen{display:none;flex:1;flex-direction:column}
@@ -199,9 +200,10 @@ function newToken() {
 
 /* 서버가 'busy'를 주거나(잠금 대기 초과), 응답이 JSON이 아니거나(할당량 초과 시 HTML 페이지),
    네트워크 오류가 나면 지수 백오프 + 지터로 재시도. 그 외 ok:false는 그대로 반환 */
-async function requestJson(url, options, onRetry) {
+async function requestJson(url, options, onRetry, attempts) {
+  const max = attempts == null ? RETRY.attempts : attempts;
   let lastErr;
-  for (let i = 0; i <= RETRY.attempts; i++) {
+  for (let i = 0; i <= max; i++) {
     try {
       const res = await fetch(url, options);
       const data = await res.json();
@@ -209,7 +211,7 @@ async function requestJson(url, options, onRetry) {
       return data;
     } catch (e) {
       lastErr = e;
-      if (i === RETRY.attempts) break;
+      if (i === max) break;
       const wait = RETRY.baseMs * Math.pow(2, i) * (0.5 + Math.random());
       if (onRetry) onRetry(i + 1, Math.max(1, Math.round(wait / 1000)));
       await sleep(wait);
@@ -220,12 +222,27 @@ async function requestJson(url, options, onRetry) {
 // POST: Content-Type을 지정하지 않으면 text/plain으로 전송되어 CORS preflight가 발생하지 않음 (Apps Script는 OPTIONS 미지원)
 const postJson = (payload, onRetry) => requestJson(API_URL, { method: 'POST', body: JSON.stringify(payload) }, onRetry);
 
-/* 전화번호 입력 시 하이픈 자동 삽입 */
+/* 미리 불러오기: 페이지가 열리면 문제를, 전화번호가 다 입력되면 중복 여부를 백그라운드에서 받아 둠.
+   "퀴즈 시작"을 누를 때는 대부분 이미 도착해 있어 기다림이 거의 없음 */
+const prefetch = { questions: null, check: {} };
+const questionsUrl = (phone) => `${API_URL}?action=questions${phone ? '&phone=' + encodeURIComponent(phone) : ''}&t=${Date.now()}`;
+const checkUrl = (phone) => `${API_URL}?action=check&phone=${encodeURIComponent(phone)}&t=${Date.now()}`;
+function prefetchQuestions() {
+  prefetch.questions = requestJson(questionsUrl(''), undefined, null, 1).catch(() => null);
+}
+function prefetchCheck(phone) {
+  if (!prefetch.check[phone]) prefetch.check[phone] = requestJson(checkUrl(phone), undefined, null, 1).catch(() => null);
+  return prefetch.check[phone];
+}
+prefetchQuestions();
+
+/* 전화번호 입력 시 하이픈 자동 삽입 + 번호가 완성되면 중복 여부 미리 확인 */
 $('phone').addEventListener('input', (e) => {
   const d = digits(e.target.value).slice(0, 11);
   e.target.value = d.length > 7 ? `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`
                  : d.length > 3 ? `${d.slice(0, 3)}-${d.slice(3)}`
                  : d;
+  if (isValidPhone(d)) prefetchCheck(d);
 });
 
 /* 입력값 검증 (시작·결과 조회 공통) */
@@ -255,16 +272,28 @@ $('btn-start').addEventListener('click', async () => {
   const btn = $('btn-start');
   setBusy(btn, true, '문제를 불러오는 중…');
   try {
-    const url = `${API_URL}?action=questions&phone=${encodeURIComponent(info.phone)}&t=${Date.now()}`;
-    const data = await requestJson(url, undefined,
-      (n, s) => setBusy(btn, true, `접속이 많아 ${s}초 후 다시 시도합니다 (${n}/${RETRY.attempts})`));
-    if (data.error === 'duplicate') {
+    const onRetry = (n, s) => setBusy(btn, true, `접속이 많아 ${s}초 후 다시 시도합니다 (${n}/${RETRY.attempts})`);
+    // 1) 중복 여부: 미리 받아 둔 결과가 있으면 그것을, 없거나 실패했으면 지금 확인
+    let check = await prefetchCheck(info.phone);
+    if (!check || !check.ok) check = await requestJson(checkUrl(info.phone), undefined, onRetry);
+    if (check.ok && check.duplicate) {
       err.textContent = '이미 참여한 휴대전화번호입니다. 결과와 상품 지급 여부는 아래 버튼으로 확인할 수 있습니다.';
       $('btn-status').hidden = false;
       return;
     }
-    if (!data.ok || !Array.isArray(data.questions) || data.questions.length === 0) {
-      throw new Error(data.error || 'no questions');
+    // 2) 문제: 미리 받아 둔 것이 있으면 바로 사용, 없거나 실패했으면 지금 요청 (서버가 중복도 함께 검사)
+    let data = prefetch.questions ? await prefetch.questions : null;
+    prefetch.questions = null;
+    if (!data || !data.ok || !Array.isArray(data.questions) || data.questions.length === 0) {
+      data = await requestJson(questionsUrl(info.phone), undefined, onRetry);
+      if (data.error === 'duplicate') {
+        err.textContent = '이미 참여한 휴대전화번호입니다. 결과와 상품 지급 여부는 아래 버튼으로 확인할 수 있습니다.';
+        $('btn-status').hidden = false;
+        return;
+      }
+      if (!data.ok || !Array.isArray(data.questions) || data.questions.length === 0) {
+        throw new Error(data.error || 'no questions');
+      }
     }
     state.questions = data.questions;
     state.answers = new Array(data.questions.length).fill(null);
