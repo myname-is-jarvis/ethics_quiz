@@ -33,6 +33,14 @@
 7. `index.html`을 GitHub Pages, Netlify, Cloudflare Pages 등 HTTPS 호스팅에 올리고, 그 주소로 QR을 만듭니다.
 8. 실제 휴대폰으로 처음부터 끝까지 한 번 진행해 `Results`에 행이 추가되는지 확인한 뒤 테스트 행을 지웁니다.
 
+## 첫 로딩 속도
+
+- 페이지가 열리는 즉시 문제를 백그라운드로 미리 받아 두고, 휴대전화번호 11자리가 입력되면 중복 여부(`action=check`)도 미리 확인합니다. "퀴즈 시작"을 누를 때는 대부분 이미 도착해 있어 대기가 거의 없습니다. 미리 받기가 실패하면 버튼을 누른 시점에 정상 경로로 다시 요청합니다.
+- 외부 웹폰트(Pretendard) 로딩을 없애고 기기 기본 한글 글꼴을 사용합니다. 모바일 네트워크에서 첫 화면이 눈에 띄게 빨라집니다. 글꼴을 되돌리려면 `<head>`에 CDN 링크를 다시 넣고 `font-family` 맨 앞에 `"Pretendard Variable",Pretendard,`를 추가하세요.
+- `script.google.com`에 `preconnect`를 걸어 TLS 연결을 미리 맺습니다.
+- 남는 지연은 Apps Script 웹앱 자체의 시작 시간(콜드 스타트)과 `/exec` → `googleusercontent.com` 리다이렉트 왕복이며, 이 구조에서는 없앨 수 없습니다.
+- 대가: 페이지를 열기만 하고 참여하지 않아도 문제 요청이 1건 발생합니다. 참여자 수 대비 GET 요청이 늘지만, 문제 pool은 캐시에서 읽으므로 시트 접근은 늘지 않습니다.
+
 ## 동시접속 대응 (v2)
 
 - 문제 pool과 참여 번호 목록을 CacheService에 60초 캐시합니다. Questions 시트를 고친 뒤 바로 반영하려면 편집기에서 `clearCache`를 실행합니다. Results에서 테스트 행을 지운 뒤에도 `clearCache`를 실행하세요.
