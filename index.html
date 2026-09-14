@@ -51,12 +51,18 @@ input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:tran
 .qnum b{font-size:40px;font-weight:300;color:var(--ink);letter-spacing:-.03em;line-height:1;margin-right:6px}
 .qtext{font-size:22px;line-height:1.4;font-weight:600;margin:0 0 22px;letter-spacing:-.01em;word-break:keep-all}
 .opts{display:flex;flex-direction:column;gap:10px}
+.opts.two{flex-direction:row}
+.opts.two .opt{flex:1;justify-content:center;padding:26px 12px;font-size:24px;font-weight:600}
+.opts.two .opt::before{display:none}
 .opt{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:15px 16px;
   border:1.5px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);
   font:inherit;font-size:17px;line-height:1.4;cursor:pointer;word-break:keep-all}
 .opt::before{content:"";flex:none;width:20px;height:20px;border-radius:50%;border:2px solid var(--line)}
 .opt[aria-checked=true]{border-color:var(--accent);background:var(--accent-soft)}
 .opt[aria-checked=true]::before{border:6px solid var(--accent)}
+.hint-btn{margin-top:14px;padding:12px;font-size:15px;font-weight:500}
+.hint{margin-top:10px;padding:12px 14px;border:1px dashed var(--line);border-radius:10px;background:var(--card);font-size:15px;line-height:1.5;word-break:keep-all}
+.hint::before{content:"힌트";display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
 .nav{display:flex;gap:10px;margin-top:auto;padding-top:24px}
 .nav .btn{margin-top:0}
 .nav .ghost{flex:0 0 96px}
@@ -122,6 +128,8 @@ input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:tran
     <div class="qnum"><b id="qnum">1</b>/ <span id="qtotal">2</span></div>
     <h2 class="qtext" id="qtext"></h2>
     <div class="opts" id="opts" role="radiogroup" aria-label="보기"></div>
+    <button id="btn-hint" class="btn ghost hint-btn" type="button" hidden aria-controls="hint">힌트 보기</button>
+    <div id="hint" class="hint" hidden></div>
     <div id="quiz-error" class="error" role="alert"></div>
     <div class="nav">
       <button id="btn-prev" class="btn ghost" type="button">이전</button>
@@ -150,7 +158,7 @@ input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:tran
 
 <script>
 /* ===== 설정: 배포한 Apps Script 웹앱 URL로 교체 ===== */
-const API_URL = 'https://script.google.com/macros/s/AKfycbzAn8LSai07sHfEZKwohFyntErNrJjObshGHxxi2Y9cztOdf3flolUvL-o0se8XOovYDA/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbz7v4hrZ_lc6FCHws4VrZZCvKCVe2gz5X4_qrIoDtQA6Qcc1RQ8Fg45am1umrXkEkUB/exec';
 const EVENT_TITLE = '행사 퀴즈';
 const QUESTIONS_PER_QUIZ = 2; // Code.gs의 CONFIG.QUESTIONS_PER_QUIZ와 같아야 함 (안내 문구 표시용)
 const PRIZE_MIN_SCORE = 2;    // Code.gs의 CONFIG.PRIZE_MIN_SCORE와 같아야 함
@@ -161,7 +169,7 @@ const RETRY = { attempts: 5, baseMs: 1500 };
 /* ================================================== */
 
 const $ = (id) => document.getElementById(id);
-const state = { name: '', emp: '', phone: '', token: '', questions: [], answers: [], idx: 0, busy: false };
+const state = { name: '', emp: '', phone: '', token: '', questions: [], answers: [], hintOpen: [], idx: 0, busy: false };
 
 document.title = EVENT_TITLE;
 $('title').textContent = EVENT_TITLE;
@@ -260,6 +268,7 @@ $('btn-start').addEventListener('click', async () => {
     }
     state.questions = data.questions;
     state.answers = new Array(data.questions.length).fill(null);
+    state.hintOpen = new Array(data.questions.length).fill(false);
     state.idx = 0;
     $('qtotal').textContent = data.questions.length;
     $('rail').innerHTML = data.questions.map(() => '<i></i>').join('');
@@ -313,6 +322,7 @@ function render() {
 
   const opts = $('opts');
   opts.innerHTML = '';
+  opts.classList.toggle('two', q.options.length === 2); // O/X처럼 보기 2개면 좌우 배치
   q.options.forEach((text) => {
     const b = document.createElement('button');
     b.type = 'button';
@@ -323,6 +333,14 @@ function render() {
     b.addEventListener('click', () => { state.answers[state.idx] = text; render(); });
     opts.appendChild(b);
   });
+
+  const hint = String(q.hint || '').trim();
+  const open = hint !== '' && !!state.hintOpen[state.idx];
+  $('btn-hint').hidden = hint === '';
+  $('btn-hint').textContent = open ? '힌트 닫기' : '힌트 보기';
+  $('btn-hint').setAttribute('aria-expanded', open ? 'true' : 'false');
+  $('hint').hidden = !open;
+  $('hint').textContent = hint;
 
   Array.from($('rail').children).forEach((el, i) => {
     el.className = state.answers[i] !== null ? 'done' : (i === state.idx ? 'cur' : '');
@@ -335,6 +353,7 @@ function render() {
   $('quiz-error').textContent = '';
 }
 
+$('btn-hint').addEventListener('click', () => { state.hintOpen[state.idx] = !state.hintOpen[state.idx]; render(); });
 $('btn-prev').addEventListener('click', () => { if (state.busy) return; if (state.idx > 0) { state.idx--; render(); } });
 $('btn-next').addEventListener('click', () => {
   if (state.busy) return;
