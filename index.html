@@ -420,7 +420,9 @@ function showResult(data) {
   $('result-note').textContent = won ? '' : NO_PRIZE_TEXT;
   $('review').innerHTML = (data.results || []).map(r => {
     const ok = !!r.correct;
-    const detail = ok ? '' : `<div class="ans">정답: ${esc(r.answer || '')}<br>내 답: ${esc(r.choice || '')}</div>`;
+    const detail = ok
+      ? `<div class="ans">정답: ${esc(r.answer || '')}</div>`
+      : `<div class="ans">선택한 답: ${esc(r.choice || '')}<br>정답: ${esc(r.answer || '')}</div>`;
     return `<li class="${ok ? 'ok' : 'no'}"><span class="mark">${ok ? '○' : '?'}</span>${esc(r.question || r.id)}${detail}</li>`;
   }).join('');
   show('s-result');
