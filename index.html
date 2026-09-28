@@ -113,7 +113,7 @@ input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:tran
         <ul>
           <li>수집 항목: 이름, 개인번호, 휴대전화번호</li>
           <li>수집 목적: 퀴즈 참여 확인 및 상품 지급</li>
-          <li>보유 기간: 행사 종료 후 1년 이내 파기</li>
+          <li>보유 기간: 행사 종료 후 30일 이내 파기 [확인 필요]</li>
           <li>동의를 거부할 수 있으며, 거부 시 퀴즈에 참여할 수 없습니다.</li>
         </ul>
       </details>
@@ -132,6 +132,7 @@ input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:tran
     <button id="btn-hint" class="btn ghost hint-btn" type="button" hidden aria-controls="hint">힌트 보기</button>
     <div id="hint" class="hint" hidden></div>
     <div id="quiz-error" class="error" role="alert"></div>
+    <button id="btn-quiz-status" class="btn ghost" type="button" hidden>내 결과 보기</button>
     <div class="nav">
       <button id="btn-prev" class="btn ghost" type="button">이전</button>
       <button id="btn-next" class="btn" type="button" disabled>다음</button>
@@ -170,7 +171,7 @@ const RETRY = { attempts: 5, baseMs: 1500 };
 /* ================================================== */
 
 const $ = (id) => document.getElementById(id);
-const state = { name: '', emp: '', phone: '', token: '', questions: [], answers: [], hintOpen: [], idx: 0, busy: false };
+const state = { name: '', emp: '', phone: '', token: '', questions: [], answers: [], hintOpen: [], idx: 0, busy: false, duplicate: null, dupShown: false };
 
 document.title = EVENT_TITLE;
 $('title').textContent = EVENT_TITLE;
@@ -235,11 +236,13 @@ function timed(label, p) {
 function prefetchQuestions() {
   prefetch.questions = timed('문제 미리 받기', requestJson(questionsUrl(''), undefined, null, 1)).catch(() => null);
 }
-function prefetchCheck(phone) {
-  if (!prefetch.check[phone]) {
-    prefetch.check[phone] = timed('중복 확인', requestJson(checkUrl(phone), undefined, null, 1)).catch(() => null);
-  }
-  return prefetch.check[phone];
+// 퀴즈 시작 직후 백그라운드로 중복 확인. 결과는 state.duplicate에 보관(true/false, 실패·미도착이면 null)
+function startCheck(phone) {
+  state.duplicate = null;
+  state.dupShown = false;
+  timed('중복 확인', requestJson(checkUrl(phone), undefined, null, 1))
+    .then(res => { if (res && res.ok && digits($('phone').value) === phone) state.duplicate = !!res.duplicate; })
+    .catch(() => {});
 }
 prefetchQuestions();
 
@@ -249,20 +252,9 @@ $('phone').addEventListener('input', (e) => {
   e.target.value = d.length > 7 ? `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`
                  : d.length > 3 ? `${d.slice(0, 3)}-${d.slice(3)}`
                  : d;
-  // 번호가 바뀌면 이전 안내를 지우고, 완성되면 백그라운드로 중복 확인 → 결과가 오면 첫 화면에 바로 표시
   $('intro-error').textContent = '';
   $('btn-status').hidden = true;
-  if (isValidPhone(d)) prefetchCheck(d).then(res => showDuplicateOnIntro(d, res));
 });
-
-// 첫 화면에 머무는 동안 중복 확인 결과가 도착하면 시작 전에 안내 (기다리는 시간은 없음)
-function showDuplicateOnIntro(phone, res) {
-  if (!res || !res.ok || !res.duplicate) return;
-  if (!$('s-intro').classList.contains('active') || state.busy) return;
-  if (digits($('phone').value) !== phone) return; // 그 사이 번호를 고쳤으면 무시
-  $('intro-error').textContent = '이미 참여한 휴대전화번호입니다. 결과와 상품 지급 여부는 아래 버튼으로 확인할 수 있습니다.';
-  $('btn-status').hidden = false;
-}
 
 /* 입력값 검증 (시작·결과 조회 공통) */
 function readIntro(needConsent) {
@@ -293,13 +285,7 @@ $('btn-start').addEventListener('click', async () => {
   const tStart = performance.now();
   try {
     const onRetry = (n, s) => setBusy(btn, true, `접속이 많아 ${s}초 후 다시 시도합니다 (${n}/${RETRY.attempts})`);
-    // 1) 중복 검사는 기다리지 않음. 이미 결과가 와 있으면(최대 0.3초만 확인) 즉시 반영하고,
-    //    아직이면 백그라운드에서 계속 진행시켜 늦게 '중복'으로 판명되면 퀴즈를 중단 (제출 시 서버가 최종 검사)
-    let checkPromise = prefetchCheck(info.phone);
-    let early = await Promise.race([checkPromise, sleep(300).then(() => undefined)]);
-    if (early === null) { delete prefetch.check[info.phone]; checkPromise = prefetchCheck(info.phone); early = undefined; }
-    if (early && early.ok && early.duplicate) { showDuplicate(); return; }
-    // 2) 문제: 미리 받아 둔 것이 있으면 바로 사용, 없거나 실패했으면 지금 요청
+    // 문제: 미리 받아 둔 것이 있으면 바로 사용, 없거나 실패했으면 지금 요청. 중복 확인은 기다리지 않음
     let data = prefetch.questions ? await prefetch.questions : null;
     prefetch.questions = null;
     if (!data || !data.ok || !Array.isArray(data.questions) || data.questions.length === 0) {
@@ -308,7 +294,6 @@ $('btn-start').addEventListener('click', async () => {
         throw new Error(data.error || 'no questions');
       }
     }
-    checkPromise.then(res => { if (res && res.ok && res.duplicate && isQuizActive()) showDuplicate(); });
     console.log(`[timing] 시작 버튼 → 문제 표시: ${Math.round(performance.now() - tStart)} ms`);
     state.questions = data.questions;
     state.answers = new Array(data.questions.length).fill(null);
@@ -316,54 +301,54 @@ $('btn-start').addEventListener('click', async () => {
     state.idx = 0;
     $('qtotal').textContent = data.questions.length;
     $('rail').innerHTML = data.questions.map(() => '<i></i>').join('');
+    $('btn-quiz-status').hidden = true;
     render();
     show('s-quiz');
+    startCheck(info.phone); // 퀴즈를 보여준 뒤 백그라운드로 중복 확인 → 제출 시 반영
   } catch (e) {
     console.error(e);
-    err.textContent = '문제를 불러오지 못했습니다. (' + ((e && e.message) || '알 수 없는 오류') + ')';
+    err.textContent = '시작하지 못했습니다. 잠시 후 다시 눌러 주세요. (' + ((e && e.message) || '알 수 없는 오류') + ')';
   } finally {
     state.busy = false;
     setBusy(btn, false, '퀴즈 시작');
   }
 });
 
-function isQuizActive() { return $('s-quiz').classList.contains('active'); }
-function showDuplicate() {
-  state.questions = []; state.answers = []; state.hintOpen = [];
-  show('s-intro');
-  $('intro-error').textContent = '이미 참여한 휴대전화번호입니다. 결과와 상품 지급 여부는 아래 버튼으로 확인할 수 있습니다.';
-  $('btn-status').hidden = false;
+// 제출 시점에 중복으로 판명: 퀴즈 화면에 안내하고 "내 결과 보기"로 연결
+function showDuplicateOnQuiz() {
+  state.duplicate = true;
+  state.dupShown = true;
+  $('quiz-error').textContent = '이미 참여한 휴대전화번호입니다. 결과와 상품 지급 여부는 아래 버튼으로 확인할 수 있습니다.';
+  $('btn-quiz-status').hidden = false;
+  $('btn-next').disabled = true;
 }
 
-/* 1-b) 이미 참여한 사람: 저장된 결과 조회 (이름·번호가 저장값과 일치해야 함) */
-$('btn-status').addEventListener('click', async () => {
+/* 저장된 결과 조회 (이름·번호가 저장값과 일치해야 함). 첫 화면과 퀴즈 화면 양쪽에서 사용 */
+async function loadStatus(btn, errEl) {
   if (state.busy) return;
-  const info = readIntro(false);
-  if (!info) return;
-  const err = $('intro-error');
   state.busy = true;
-  const btn = $('btn-status');
-  btn.hidden = false;
   setBusy(btn, true, '결과를 불러오는 중…');
   try {
-    const url = `${API_URL}?action=status&phone=${encodeURIComponent(info.phone)}&name=${encodeURIComponent(info.name)}&t=${Date.now()}`;
+    const url = `${API_URL}?action=status&phone=${encodeURIComponent(state.phone)}&name=${encodeURIComponent(state.name)}&t=${Date.now()}`;
     const data = await requestJson(url, undefined,
       (n, s) => setBusy(btn, true, `접속이 많아 ${s}초 후 다시 시도합니다 (${n}/${RETRY.attempts})`));
     if (!data.ok) {
-      err.textContent = data.error === 'name_mismatch' ? '저장된 이름과 다릅니다. 참여할 때 입력한 이름을 정확히 입력해 주세요.'
-                      : data.error === 'not_found' ? '이 번호로 저장된 결과가 없습니다.'
-                      : '결과를 불러오지 못했습니다. (' + (data.error || '알 수 없는 오류') + ')';
+      errEl.textContent = data.error === 'name_mismatch' ? '저장된 이름과 다릅니다. 참여할 때 입력한 이름을 정확히 입력해 주세요.'
+                        : data.error === 'not_found' ? '이 번호로 저장된 결과가 없습니다.'
+                        : '결과를 불러오지 못했습니다. (' + (data.error || '알 수 없는 오류') + ')';
       return;
     }
     showResult(data);
   } catch (e) {
     console.error(e);
-    err.textContent = '결과를 불러오지 못했습니다. (' + ((e && e.message) || '알 수 없는 오류') + ')';
+    errEl.textContent = '결과를 불러오지 못했습니다. (' + ((e && e.message) || '알 수 없는 오류') + ')';
   } finally {
     state.busy = false;
     setBusy(btn, false, '내 결과 보기');
   }
-});
+}
+$('btn-status').addEventListener('click', () => { if (readIntro(false)) { $('btn-status').hidden = false; loadStatus($('btn-status'), $('intro-error')); } });
+$('btn-quiz-status').addEventListener('click', () => loadStatus($('btn-quiz-status'), $('quiz-error')));
 
 /* 2) 문제 화면 */
 function render() {
@@ -401,8 +386,9 @@ function render() {
   const last = state.idx === state.questions.length - 1;
   $('btn-prev').style.visibility = state.idx === 0 ? 'hidden' : 'visible';
   $('btn-next').textContent = last ? '제출하기' : '다음';
-  $('btn-next').disabled = chosen === null;
-  $('quiz-error').textContent = '';
+  // 중복은 '제출하기'를 눌렀을 때 안내하므로, 안내 전에는 버튼을 막지 않음
+  $('btn-next').disabled = chosen === null || state.dupShown;
+  if (!state.dupShown) { $('quiz-error').textContent = ''; $('btn-quiz-status').hidden = true; }
 }
 
 $('btn-hint').addEventListener('click', () => { state.hintOpen[state.idx] = !state.hintOpen[state.idx]; render(); });
@@ -423,6 +409,7 @@ async function submit() {
     $('quiz-error').textContent = '아직 답하지 않은 문제가 있습니다.';
     return;
   }
+  if (state.duplicate === true) { showDuplicateOnQuiz(); return; } // 시작 직후 보낸 확인 결과가 이미 '중복'
   state.busy = true;
   const btn = $('btn-next');
   setBusy(btn, true, '제출 중…');
@@ -440,9 +427,8 @@ async function submit() {
     const data = await postJson(payload,
       (n, s) => setBusy(btn, true, `접속이 많아 ${s}초 후 다시 제출합니다 (${n}/${RETRY.attempts})`));
     if (!data.ok) {
-      $('quiz-error').textContent = data.error === 'duplicate'
-        ? '이미 참여한 휴대전화번호입니다.'
-        : '제출에 실패했습니다. (' + (data.error || '알 수 없는 오류') + ')';
+      if (data.error === 'duplicate') { showDuplicateOnQuiz(); return; } // 서버 최종 검사 결과
+      $('quiz-error').textContent = '제출에 실패했습니다. (' + (data.error || '알 수 없는 오류') + ')';
       return;
     }
     showResult(data);
@@ -453,6 +439,7 @@ async function submit() {
     state.busy = false;
     $('btn-prev').disabled = false;
     setBusy(btn, false, '제출하기');
+    if (state.dupShown) $('btn-next').disabled = true;
   }
 }
 
