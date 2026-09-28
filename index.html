@@ -227,11 +227,18 @@ const postJson = (payload, onRetry) => requestJson(API_URL, { method: 'POST', bo
 const prefetch = { questions: null, check: {} };
 const questionsUrl = (phone) => `${API_URL}?action=questions${phone ? '&phone=' + encodeURIComponent(phone) : ''}&t=${Date.now()}`;
 const checkUrl = (phone) => `${API_URL}?action=check&phone=${encodeURIComponent(phone)}&t=${Date.now()}`;
+// 소요 시간을 콘솔에 남김 (PC 브라우저 F12 > Console 에서 [timing] 으로 확인)
+function timed(label, p) {
+  const t = performance.now();
+  return p.finally(() => console.log(`[timing] ${label}: ${Math.round(performance.now() - t)} ms`));
+}
 function prefetchQuestions() {
-  prefetch.questions = requestJson(questionsUrl(''), undefined, null, 1).catch(() => null);
+  prefetch.questions = timed('문제 미리 받기', requestJson(questionsUrl(''), undefined, null, 1)).catch(() => null);
 }
 function prefetchCheck(phone) {
-  if (!prefetch.check[phone]) prefetch.check[phone] = requestJson(checkUrl(phone), undefined, null, 1).catch(() => null);
+  if (!prefetch.check[phone]) {
+    prefetch.check[phone] = timed('중복 확인', requestJson(checkUrl(phone), undefined, null, 1)).catch(() => null);
+  }
   return prefetch.check[phone];
 }
 prefetchQuestions();
@@ -271,30 +278,26 @@ $('btn-start').addEventListener('click', async () => {
   state.busy = true;
   const btn = $('btn-start');
   setBusy(btn, true, '문제를 불러오는 중…');
+  const tStart = performance.now();
   try {
     const onRetry = (n, s) => setBusy(btn, true, `접속이 많아 ${s}초 후 다시 시도합니다 (${n}/${RETRY.attempts})`);
-    // 1) 중복 여부: 미리 받아 둔 결과가 있으면 그것을, 없거나 실패했으면 지금 확인
-    let check = await prefetchCheck(info.phone);
-    if (!check || !check.ok) check = await requestJson(checkUrl(info.phone), undefined, onRetry);
-    if (check.ok && check.duplicate) {
-      err.textContent = '이미 참여한 휴대전화번호입니다. 결과와 상품 지급 여부는 아래 버튼으로 확인할 수 있습니다.';
-      $('btn-status').hidden = false;
-      return;
-    }
-    // 2) 문제: 미리 받아 둔 것이 있으면 바로 사용, 없거나 실패했으면 지금 요청 (서버가 중복도 함께 검사)
+    // 1) 중복 검사는 기다리지 않음. 이미 결과가 와 있으면(최대 0.3초만 확인) 즉시 반영하고,
+    //    아직이면 백그라운드에서 계속 진행시켜 늦게 '중복'으로 판명되면 퀴즈를 중단 (제출 시 서버가 최종 검사)
+    let checkPromise = prefetchCheck(info.phone);
+    let early = await Promise.race([checkPromise, sleep(300).then(() => undefined)]);
+    if (early === null) { delete prefetch.check[info.phone]; checkPromise = prefetchCheck(info.phone); early = undefined; }
+    if (early && early.ok && early.duplicate) { showDuplicate(); return; }
+    // 2) 문제: 미리 받아 둔 것이 있으면 바로 사용, 없거나 실패했으면 지금 요청
     let data = prefetch.questions ? await prefetch.questions : null;
     prefetch.questions = null;
     if (!data || !data.ok || !Array.isArray(data.questions) || data.questions.length === 0) {
-      data = await requestJson(questionsUrl(info.phone), undefined, onRetry);
-      if (data.error === 'duplicate') {
-        err.textContent = '이미 참여한 휴대전화번호입니다. 결과와 상품 지급 여부는 아래 버튼으로 확인할 수 있습니다.';
-        $('btn-status').hidden = false;
-        return;
-      }
+      data = await timed('문제 요청(즉시)', requestJson(questionsUrl(''), undefined, onRetry));
       if (!data.ok || !Array.isArray(data.questions) || data.questions.length === 0) {
         throw new Error(data.error || 'no questions');
       }
     }
+    checkPromise.then(res => { if (res && res.ok && res.duplicate && isQuizActive()) showDuplicate(); });
+    console.log(`[timing] 시작 버튼 → 문제 표시: ${Math.round(performance.now() - tStart)} ms`);
     state.questions = data.questions;
     state.answers = new Array(data.questions.length).fill(null);
     state.hintOpen = new Array(data.questions.length).fill(false);
@@ -311,6 +314,14 @@ $('btn-start').addEventListener('click', async () => {
     setBusy(btn, false, '퀴즈 시작');
   }
 });
+
+function isQuizActive() { return $('s-quiz').classList.contains('active'); }
+function showDuplicate() {
+  state.questions = []; state.answers = []; state.hintOpen = [];
+  show('s-intro');
+  $('intro-error').textContent = '이미 참여한 휴대전화번호입니다. 결과와 상품 지급 여부는 아래 버튼으로 확인할 수 있습니다.';
+  $('btn-status').hidden = false;
+}
 
 /* 1-b) 이미 참여한 사람: 저장된 결과 조회 (이름·번호가 저장값과 일치해야 함) */
 $('btn-status').addEventListener('click', async () => {
@@ -393,7 +404,7 @@ $('btn-next').addEventListener('click', () => {
 
 /* 3) 제출 → 서버 채점 결과 표시 */
 async function submit() {
-  if (state.busy) return;
+  if (state.busy || !state.questions.length) return;
   const missing = state.answers.findIndex(a => a === null);
   if (missing !== -1) {
     state.idx = missing; render();
