@@ -408,7 +408,9 @@ $('btn-next').addEventListener('click', () => {
   submit();
 });
 
-/* 3) 제출: 브라우저에서 즉시 채점해 결과를 먼저 보여주고, 저장은 백그라운드로 */
+/* 3) 제출: 브라우저에서 채점.
+   - 전부 정답(상품 대상): 결과를 먼저 보여주고 저장은 뒤에서. 저장이 끝나면 "운영자 확인" 버튼이 나타남
+   - 그 외: 저장이 끝난 뒤 결과 화면으로 이동 (결과만 보고 바로 닫아도 통계에서 빠지지 않도록) */
 function submit() {
   if (state.busy || !state.questions.length) return;
   const missing = state.answers.findIndex(a => a === null);
@@ -424,23 +426,32 @@ function submit() {
     correct: state.answers[i] === q.answer, answer: q.answer,
   }));
   const score = results.filter(r => r.correct).length;
-  showResult({
+  const local = {
     ok: true, name: state.name, emp_id: state.emp, score, total: results.length,
     eligible: score >= PRIZE_MIN_SCORE, claimed: false, claimed_at: '', results,
-  });
-  saveInBackground();
+  };
+  if (local.eligible) {
+    showResult(local);
+    saveInBackground();
+  } else {
+    saveThenShow(local);
+  }
 }
 
-async function saveInBackground() {
-  if (state.save === 'saving') return;
-  setSaveState('saving');
-  const payload = {
+function buildPayload() {
+  return {
     name: state.name, emp_id: state.emp, phone: state.phone, token: state.token, // 같은 token이면 재시도해도 한 번만 저장됨
     answers: state.questions.map((q, i) => ({ id: q.id, choice: state.answers[i] })),
     ua: navigator.userAgent,
   };
+}
+
+/* 상품 대상자: 결과 화면 뒤에서 저장. 화면에는 저장 중 표시를 하지 않고, 끝나면 운영자 확인 버튼만 나타남 */
+async function saveInBackground() {
+  if (state.save === 'saving') return;
+  setSaveState('saving');
   try {
-    const data = await timed('답안 저장', postJson(payload, (n, s) => setSaveState('saving', `접속이 많아 ${s}초 후 다시 저장합니다 (${n}/${RETRY.attempts})`)));
+    const data = await timed('답안 저장', postJson(buildPayload(), null));
     if (data.ok) { setSaveState('saved', '', data); return; }
     if (data.error === 'duplicate') { setSaveState('duplicate'); return; }
     setSaveState('failed', data.error || '알 수 없는 오류');
@@ -450,31 +461,53 @@ async function saveInBackground() {
   }
 }
 
-/* 저장 상태를 결과 화면에 표시. 운영자 확인은 저장이 끝난 뒤에만 가능 */
+/* 상품 대상이 아닌 참가자: 저장이 끝난 뒤에 결과 화면으로 */
+async function saveThenShow(local) {
+  state.busy = true;
+  const btn = $('btn-next');
+  setBusy(btn, true, '제출 중…');
+  $('btn-prev').disabled = true;
+  try {
+    const data = await timed('답안 저장', postJson(buildPayload(),
+      (n, s) => setBusy(btn, true, `접속이 많아 ${s}초 후 다시 제출합니다 (${n}/${RETRY.attempts})`)));
+    if (!data.ok) {
+      if (data.error === 'duplicate') { showDuplicateOnQuiz(); return; } // 서버 최종 검사 결과
+      $('quiz-error').textContent = '제출에 실패했습니다. (' + (data.error || '알 수 없는 오류') + ')';
+      return;
+    }
+    showResult(local);
+  } catch (e) {
+    console.error(e);
+    $('quiz-error').textContent = '제출에 실패했습니다. 잠시 후 "제출하기"를 다시 눌러 주세요. (' + ((e && e.message) || '알 수 없는 오류') + ')';
+  } finally {
+    state.busy = false;
+    $('btn-prev').disabled = false;
+    setBusy(btn, false, '제출하기');
+    if (state.dupShown) $('btn-next').disabled = true;
+  }
+}
+
+/* 저장 상태를 결과 화면에 반영. 저장 중에는 아무 표시 없이 운영자 확인 버튼만 숨김 */
 function setSaveState(kind, msg, data) {
   state.save = kind;
   const bar = $('save-bar'), text = $('save-text');
-  bar.hidden = false; bar.classList.toggle('warn', kind === 'failed' || kind === 'duplicate');
+  bar.hidden = true; bar.classList.toggle('warn', kind === 'failed' || kind === 'duplicate');
   $('btn-resave').hidden = kind !== 'failed';
   $('btn-result-status').hidden = kind !== 'duplicate';
-  const claim = $('btn-claim');
   if (kind === 'saving') {
-    text.textContent = msg || '답안을 저장하는 중입니다…';
-    claim.disabled = true; claim.textContent = '저장 후 운영자 확인 가능';
+    $('btn-claim').hidden = true;
+    $('claimed-box').hidden = true;
   } else if (kind === 'saved') {
-    bar.hidden = true;
-    claim.disabled = false; claim.textContent = '운영자 확인';
-    if (data) renderClaim(!!data.claimed, data.claimed_at); // 서버가 돌려준 지급 상태 (재시도로 이미 지급된 경우 포함)
+    renderClaim(!!(data && data.claimed), data ? data.claimed_at : ''); // 저장 완료 → 버튼 표시 (이미 지급된 건이면 지급 완료 표시)
   } else if (kind === 'duplicate') {
+    bar.hidden = false;
     text.textContent = '이미 참여한 휴대전화번호입니다. 이번 답안은 저장되지 않았습니다. 이전 결과와 지급 여부는 아래 버튼으로 확인할 수 있습니다.';
     $('prize').hidden = true;
     $('result-title').textContent = '이미 참여한 번호입니다';
   } else if (kind === 'failed') {
-    text.textContent = '답안을 저장하지 못했습니다. 아래 버튼으로 다시 저장해 주세요. (' + msg + ')';
-    claim.disabled = true; claim.textContent = '저장 후 운영자 확인 가능';
-  } else {
-    bar.hidden = true;
-    claim.disabled = false; claim.textContent = '운영자 확인';
+    bar.hidden = false;
+    text.textContent = '결과를 저장하지 못했습니다. 아래 버튼을 눌러 다시 저장해 주세요. (' + msg + ')';
+    $('btn-claim').hidden = true;
   }
 }
 $('btn-resave').addEventListener('click', () => saveInBackground());
@@ -514,7 +547,7 @@ function renderClaim(claimed, claimedAt) {
 
 /* 5) 운영자 확인: 서버에 지급 기록. 한 번 기록되면 다시 지급되지 않음 */
 $('btn-claim').addEventListener('click', async () => {
-  if (state.busy || $('prize').hidden || state.save === 'saving' || state.save === 'failed' || state.save === 'duplicate') return;
+  if (state.busy || $('prize').hidden || $('btn-claim').hidden || state.save === 'saving' || state.save === 'failed' || state.save === 'duplicate') return;
   const err = $('claim-error');
   err.textContent = '';
   if (!window.confirm('운영자 확인입니다. 상품을 지급하셨습니까?')) return;
