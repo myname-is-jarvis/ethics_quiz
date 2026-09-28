@@ -249,8 +249,20 @@ $('phone').addEventListener('input', (e) => {
   e.target.value = d.length > 7 ? `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`
                  : d.length > 3 ? `${d.slice(0, 3)}-${d.slice(3)}`
                  : d;
-  if (isValidPhone(d)) prefetchCheck(d);
+  // 번호가 바뀌면 이전 안내를 지우고, 완성되면 백그라운드로 중복 확인 → 결과가 오면 첫 화면에 바로 표시
+  $('intro-error').textContent = '';
+  $('btn-status').hidden = true;
+  if (isValidPhone(d)) prefetchCheck(d).then(res => showDuplicateOnIntro(d, res));
 });
+
+// 첫 화면에 머무는 동안 중복 확인 결과가 도착하면 시작 전에 안내 (기다리는 시간은 없음)
+function showDuplicateOnIntro(phone, res) {
+  if (!res || !res.ok || !res.duplicate) return;
+  if (!$('s-intro').classList.contains('active') || state.busy) return;
+  if (digits($('phone').value) !== phone) return; // 그 사이 번호를 고쳤으면 무시
+  $('intro-error').textContent = '이미 참여한 휴대전화번호입니다. 결과와 상품 지급 여부는 아래 버튼으로 확인할 수 있습니다.';
+  $('btn-status').hidden = false;
+}
 
 /* 입력값 검증 (시작·결과 조회 공통) */
 function readIntro(needConsent) {
