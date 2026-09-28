@@ -293,13 +293,18 @@ $('btn-start').addEventListener('click', async () => {
   const tStart = performance.now();
   try {
     const onRetry = (n, s) => setBusy(btn, true, `접속이 많아 ${s}초 후 다시 시도합니다 (${n}/${RETRY.attempts})`);
-    // 1) 중복 검사는 기다리지 않음. 이미 결과가 와 있으면(최대 0.3초만 확인) 즉시 반영하고,
-    //    아직이면 백그라운드에서 계속 진행시켜 늦게 '중복'으로 판명되면 퀴즈를 중단 (제출 시 서버가 최종 검사)
-    let checkPromise = prefetchCheck(info.phone);
-    let early = await Promise.race([checkPromise, sleep(300).then(() => undefined)]);
-    if (early === null) { delete prefetch.check[info.phone]; checkPromise = prefetchCheck(info.phone); early = undefined; }
-    if (early && early.ok && early.duplicate) { showDuplicate(); return; }
+    // 1) 참여 여부 확인: 번호 입력 시 미리 보낸 요청의 응답을 기다림 (대개 이미 도착해 있음).
+    //    실패했으면 다시 요청. 확인이 끝나기 전에는 넘어가지 않음
+    setBusy(btn, true, '참여 여부 확인 중…');
+    let check = await prefetchCheck(info.phone);
+    if (!check || !check.ok) {
+      delete prefetch.check[info.phone];
+      check = await timed('중복 확인(재요청)', requestJson(checkUrl(info.phone), undefined, onRetry));
+    }
+    if (!check.ok) throw new Error(check.error || '참여 여부 확인 실패');
+    if (check.duplicate) { showDuplicate(); return; }
     // 2) 문제: 미리 받아 둔 것이 있으면 바로 사용, 없거나 실패했으면 지금 요청
+    setBusy(btn, true, '문제를 불러오는 중…');
     let data = prefetch.questions ? await prefetch.questions : null;
     prefetch.questions = null;
     if (!data || !data.ok || !Array.isArray(data.questions) || data.questions.length === 0) {
@@ -308,7 +313,6 @@ $('btn-start').addEventListener('click', async () => {
         throw new Error(data.error || 'no questions');
       }
     }
-    checkPromise.then(res => { if (res && res.ok && res.duplicate && isQuizActive()) showDuplicate(); });
     console.log(`[timing] 시작 버튼 → 문제 표시: ${Math.round(performance.now() - tStart)} ms`);
     state.questions = data.questions;
     state.answers = new Array(data.questions.length).fill(null);
@@ -320,14 +324,13 @@ $('btn-start').addEventListener('click', async () => {
     show('s-quiz');
   } catch (e) {
     console.error(e);
-    err.textContent = '문제를 불러오지 못했습니다. (' + ((e && e.message) || '알 수 없는 오류') + ')';
+    err.textContent = '시작하지 못했습니다. 잠시 후 다시 눌러 주세요. (' + ((e && e.message) || '알 수 없는 오류') + ')';
   } finally {
     state.busy = false;
     setBusy(btn, false, '퀴즈 시작');
   }
 });
 
-function isQuizActive() { return $('s-quiz').classList.contains('active'); }
 function showDuplicate() {
   state.questions = []; state.answers = []; state.hintOpen = [];
   show('s-intro');
