@@ -495,10 +495,11 @@ function setSaveState(kind, msg, data) {
   $('btn-resave').hidden = kind !== 'failed';
   $('btn-result-status').hidden = kind !== 'duplicate';
   if (kind === 'saving') {
-    $('btn-claim').hidden = true;
+    $('btn-claim').hidden = false;   // 버튼은 보이되 저장이 끝날 때까지 비활성
+    $('btn-claim').disabled = true;
     $('claimed-box').hidden = true;
   } else if (kind === 'saved') {
-    renderClaim(!!(data && data.claimed), data ? data.claimed_at : ''); // 저장 완료 → 버튼 표시 (이미 지급된 건이면 지급 완료 표시)
+    renderClaim(!!(data && data.claimed), data ? data.claimed_at : ''); // 저장 완료 → 버튼 활성 (이미 지급된 건이면 지급 완료 표시)
   } else if (kind === 'duplicate') {
     bar.hidden = false;
     text.textContent = '이미 참여한 휴대전화번호입니다. 이번 답안은 저장되지 않았습니다. 이전 결과와 지급 여부는 아래 버튼으로 확인할 수 있습니다.';
@@ -507,7 +508,8 @@ function setSaveState(kind, msg, data) {
   } else if (kind === 'failed') {
     bar.hidden = false;
     text.textContent = '결과를 저장하지 못했습니다. 아래 버튼을 눌러 다시 저장해 주세요. (' + msg + ')';
-    $('btn-claim').hidden = true;
+    $('btn-claim').hidden = false;
+    $('btn-claim').disabled = true;
   }
 }
 $('btn-resave').addEventListener('click', () => saveInBackground());
@@ -540,6 +542,7 @@ function showResult(data) {
 
 function renderClaim(claimed, claimedAt) {
   $('btn-claim').hidden = claimed;
+  $('btn-claim').disabled = false;
   const box = $('claimed-box');
   box.hidden = !claimed;
   if (claimed) box.innerHTML = `지급 완료<small>${esc(fmtTime(claimedAt))}</small>`;
